@@ -506,13 +506,26 @@ static int exec_select_complex_generic(Table *t, Query q, ExecutionPlan plan)
         if (q.hasHaving) {
             int filteredCount = 0;
             for (int i = 0; i < groupCount; i++) {
-                int val = groups[i].count; // Currently only supports COUNT(*)
                 int ok = 0;
-                if (strcmp(q.havingOp, ">") == 0) ok = (val > q.havingValue);
-                else if (strcmp(q.havingOp, "<") == 0) ok = (val < q.havingValue);
-                else if (strcmp(q.havingOp, "=") == 0) ok = (val == q.havingValue);
-                else if (strcmp(q.havingOp, ">=") == 0) ok = (val >= q.havingValue);
-                else if (strcmp(q.havingOp, "<=") == 0) ok = (val <= q.havingValue);
+                
+                /* If HAVING refers to the grouping column, filter by value.
+                 * Otherwise, default to filtering by COUNT(*) for now. */
+                if (strcasecmp(q.havingCol, q.groupByCol) == 0) {
+                    int val = groups[i].groupVal.int_val; // Assuming INT for now
+                    if (strcmp(q.havingOp, ">") == 0) ok = (val > q.havingValue);
+                    else if (strcmp(q.havingOp, "<") == 0) ok = (val < q.havingValue);
+                    else if (strcmp(q.havingOp, "=") == 0) ok = (val == q.havingValue);
+                    else if (strcmp(q.havingOp, ">=") == 0) ok = (val >= q.havingValue);
+                    else if (strcmp(q.havingOp, "<=") == 0) ok = (val <= q.havingValue);
+                } else {
+                    /* Default aggregate: COUNT(*) */
+                    int val = groups[i].count;
+                    if (strcmp(q.havingOp, ">") == 0) ok = (val > q.havingValue);
+                    else if (strcmp(q.havingOp, "<") == 0) ok = (val < q.havingValue);
+                    else if (strcmp(q.havingOp, "=") == 0) ok = (val == q.havingValue);
+                    else if (strcmp(q.havingOp, ">=") == 0) ok = (val >= q.havingValue);
+                    else if (strcmp(q.havingOp, "<=") == 0) ok = (val <= q.havingValue);
+                }
                 
                 if (ok) groups[filteredCount++] = groups[i];
             }
@@ -740,6 +753,84 @@ static int exec_update(Database *db, Query q)
     return 0;
 }
 
+static int exec_delete_generic(Table *t, Query q)
+{
+    int colIdx = schema_find_column(t->schema, q.column);
+    if (colIdx < 0) {
+        fprintf(stderr, "[executor] DELETE: column '%s' not found\n", q.column);
+        return -1;
+    }
+
+    int found_count = 0;
+    for (int i = 0; i < t->gen_count; i++) {
+        GenericRecord *r = t->gen_records[i];
+        int match = 0;
+        if (t->schema->columns[colIdx].type == COL_INT) {
+            if (r->values[colIdx].int_val == q.id) match = 1;
+        } else {
+            /* String match if needed - though q.id is int */
+        }
+
+        if (match) {
+            genrec_free(t->gen_records[i]);
+            /* Compact */
+            for (int j = i; j < t->gen_count - 1; j++)
+                t->gen_records[j] = t->gen_records[j+1];
+            t->gen_records[t->gen_count - 1] = NULL;
+            t->gen_count--;
+            i--; // Re-check this index
+            found_count++;
+        }
+    }
+
+    if (found_count > 0) {
+        /* Rebuild indexes */
+        freeHash((HashTable *)t->primary_hash);
+        freeBPTree((BPTree *)t->primary_bp);
+        t->primary_hash = (void *)createHashTable();
+        t->primary_bp = (void *)createTree();
+        for (int i = 0; i < t->gen_count; i++) {
+            GenericRecord *r = t->gen_records[i];
+            int pk = r->values[t->primary_col_idx].int_val;
+            insertHash((HashTable *)t->primary_hash, pk, (Record *)r);
+            insertBPTree((BPTree *)t->primary_bp, pk, (Record *)r);
+        }
+        rewriteGenericTableToDisk(t->name, t);
+        printf("[executor] Deleted %d record(s) from '%s'.\n", found_count, t->name);
+    } else {
+        printf("[executor] DELETE: No records found matching %s=%d.\n", q.column, q.id);
+    }
+    return 0;
+}
+
+static int exec_update_generic(Table *t, Query q)
+{
+    int whereColIdx = schema_find_column(t->schema, q.column);
+    int setColIdx = schema_find_column(t->schema, "age"); // Parser currently only supports 'age'
+    
+    if (whereColIdx < 0 || setColIdx < 0) {
+        fprintf(stderr, "[executor] UPDATE: columns not found\n");
+        return -1;
+    }
+
+    int found_count = 0;
+    for (int i = 0; i < t->gen_count; i++) {
+        GenericRecord *r = t->gen_records[i];
+        if (r->values[whereColIdx].int_val == q.id) {
+            r->values[setColIdx].int_val = q.newAge;
+            found_count++;
+        }
+    }
+
+    if (found_count > 0) {
+        rewriteGenericTableToDisk(t->name, t);
+        printf("[executor] Updated %d record(s) in '%s'.\n", found_count, t->name);
+    } else {
+        printf("[executor] UPDATE: No records found matching %s=%d.\n", q.column, q.id);
+    }
+    return 0;
+}
+
 
 
 static int exec_count(Database *db)
@@ -859,6 +950,14 @@ int executeQuery(Database *db, Query q)
                 printf("--------\n");
                 printf("%-8d\n\n", genTable->gen_count);
                 result = 0;
+                goto cleanup;
+
+            case QUERY_DELETE_WHERE:
+                result = exec_delete_generic(genTable, q);
+                goto cleanup;
+
+            case QUERY_UPDATE:
+                result = exec_update_generic(genTable, q);
                 goto cleanup;
 
             default:

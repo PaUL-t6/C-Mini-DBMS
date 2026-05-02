@@ -10,7 +10,7 @@ const path       = require("path");
 // ---------------------------------------------------------------------------
 
 // Path to the compiled C binary (relative to this file's location)
-const DBMS_BINARY = path.resolve(__dirname, "../backend/dbms");
+const DBMS_BINARY = path.resolve(__dirname, "../backend/dbms" + (process.platform === "win32" ? ".exe" : ""));
 
 // How long (ms) to wait for the C process to respond before timing out
 const QUERY_TIMEOUT_MS = 5000;
