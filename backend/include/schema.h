@@ -132,7 +132,7 @@ void schema_print_header(const Schema *s);
  * `records` is an array of `count` GenericRecord pointers. */
 void schema_print_all(const char *tableName, const Schema *s,
                       GenericRecord **records, int count,
-                      char selectCols[MAX_GEN_VALUES][MAX_COL_NAME], int selectColCount);
+                      char (*selectCols)[MAX_COL_NAME], int selectColCount);
 
 /* Merge two schemas into a new one. Caller must free. */
 Schema *schema_merge(const Schema *s1, const Schema *s2);

@@ -187,7 +187,7 @@ void genrec_print(const GenericRecord *r, const Schema *s)
 
 void schema_print_all(const char *tableName, const Schema *s,
                       GenericRecord **records, int count,
-                      char selectCols[MAX_GEN_VALUES][MAX_COL_NAME], int selectColCount)
+                      char (*selectCols)[MAX_COL_NAME], int selectColCount)
 {
     if (!s) return;
 

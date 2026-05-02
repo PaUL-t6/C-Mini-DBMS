@@ -95,7 +95,7 @@ void table_print_all(const Table *t)
 
     /* Generic table — delegate to schema-aware printer */
     if (t->is_generic && t->schema) {
-        schema_print_all(t->name, t->schema, t->gen_records, t->gen_count);
+        schema_print_all(t->name, t->schema, t->gen_records, t->gen_count, NULL, 0);
         return;
     }
 
