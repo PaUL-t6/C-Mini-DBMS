@@ -7,6 +7,7 @@
 #include "include/parser.h"
 #include "include/query_executor.h"
 #include "include/transaction.h"   
+#include "include/storage.h"
 
 
 
@@ -70,6 +71,9 @@ int main(void)
         fprintf(stderr, "Fatal: could not allocate database.\n");
         return EXIT_FAILURE;
     }
+
+    /* Load existing tables from disk */
+    storage_bootstrap(db);
 
     /* TxLog is stack-allocated — no heap allocation required */
     TxLog txlog;

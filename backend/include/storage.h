@@ -128,4 +128,7 @@ int loadGenericTableFromDisk(const char *tableName, Table *t);
  * ---------------------------------------------------------------- */
 int rewriteGenericTableToDisk(const char *tableName, const Table *t);
 
+/* Bootstrap: Scan data directory and load all tables into the database */
+void storage_bootstrap(void *dbPtr);
+
 #endif /* STORAGE_H */
