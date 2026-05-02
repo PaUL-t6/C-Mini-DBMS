@@ -453,7 +453,10 @@ static int exec_select_complex_generic(Table *t, Query q, ExecutionPlan plan)
                     else if (strcmp(op, "!=") == 0) ok = (rVal != val);
                     if (ok) matched[matchedCount++] = r;
                 } else {
-                    if (strcmp(op, "=") == 0 && strcmp(r->values[colIdx].str_val, q.column) == 0) 
+                    /* String comparison (currently only support '=' and '!=') */
+                    if (strcmp(op, "=") == 0 && strcmp(r->values[colIdx].str_val, q.whereValueStr) == 0) 
+                        matched[matchedCount++] = r;
+                    else if (strcmp(op, "!=") == 0 && strcmp(r->values[colIdx].str_val, q.whereValueStr) != 0)
                         matched[matchedCount++] = r;
                 }
             }
@@ -623,6 +626,24 @@ static int exec_explain(Database *db, Query q)
             treeHeight = getBPTreeHeight(bp);
         } else if (plan.planType == INDEX_HASH) {
             matches = 1; /* Hash implies unique in this logic */
+        } else {
+            /* Table scan: count manual matches for strings or non-indexed cols */
+            const char *op = inner->whereOp[0] ? inner->whereOp : "=";
+            int colIdx = schema_find_column(t->schema, col);
+            if (colIdx >= 0) {
+                for (int i = 0; i < t->gen_count; i++) {
+                    GenericRecord *r = t->gen_records[i];
+                    if (t->schema->columns[colIdx].type == COL_INT) {
+                        int rVal = r->values[colIdx].int_val;
+                        if (strcmp(op, "=") == 0 && rVal == val) matches++;
+                        else if (strcmp(op, ">") == 0 && rVal > val) matches++;
+                        else if (strcmp(op, "<") == 0 && rVal < val) matches++;
+                    } else {
+                        if (strcmp(op, "=") == 0 && strcmp(r->values[colIdx].str_val, inner->whereValueStr) == 0)
+                            matches++;
+                    }
+                }
+            }
         }
     }
 

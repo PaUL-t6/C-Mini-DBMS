@@ -108,6 +108,7 @@ typedef struct Query_s {
     char       name[MAX_NAME_LEN];  /* INSERT name value                  */
     int        age;                 /* INSERT age, SELECT WHERE age = X   */
     int        newAge;              /* UPDATE SET age = <newAge> WHERE id  */
+    char       whereValueStr[MAX_NAME_LEN]; /* Value for string filters */
 
     /* EXPLAIN only: heap-allocated inner Query* — caller must free.
      * Cast to (Query *) when using.  NULL for all other query types. */

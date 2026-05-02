@@ -132,6 +132,29 @@ static Query parse_update(void)
     return q;
 }
 
+/* Helper to add spaces around operators like '=', '>', '<' if missing */
+static void preprocess_sql(const char *sql, char *out, size_t out_len) {
+    size_t i = 0, j = 0;
+    while (sql[i] && j < out_len - 3) {
+        char c = sql[i];
+        if (c == '=' || c == '>' || c == '<' || c == '!') {
+            /* Add space before if not present */
+            if (j > 0 && out[j-1] != ' ') out[j++] = ' ';
+            out[j++] = c;
+            /* Handle >=, <=, != */
+            if ((c == '>' || c == '<' || c == '!') && sql[i+1] == '=') {
+                out[j++] = sql[++i];
+            }
+            /* Add space after if not present */
+            if (sql[i+1] != ' ') out[j++] = ' ';
+        } else {
+            out[j++] = c;
+        }
+        i++;
+    }
+    out[j] = '\0';
+}
+
 Query parseQuery(const char *sql)
 {
     Query q;
@@ -141,8 +164,7 @@ Query parseQuery(const char *sql)
         return make_unknown("empty SQL string");
 
     char buf[MAX_SQL_LEN];
-    strncpy(buf, sql, MAX_SQL_LEN - 1);
-    buf[MAX_SQL_LEN - 1] = '\0';
+    preprocess_sql(sql, buf, MAX_SQL_LEN);
 
     char *token = strtok(buf, DELIMS);
     if (!token)
@@ -385,15 +407,19 @@ Query parseQuery(const char *sql)
                 if (!token) return make_unknown("missing value in WHERE");
                 char *v = strip_quotes(token);
 
+                /* Store both numeric and string versions of the value */
+                q.id = atoi(v);
+                strncpy(q.whereValueStr, v, MAX_NAME_LEN - 1);
+                q.whereValueStr[MAX_NAME_LEN - 1] = '\0';
+
                 if (strcasecmp(q.column, "id") == 0) {
                     q.type = QUERY_SELECT_WHERE;
-                    q.id = atoi(v);
                 } else if (strcasecmp(q.column, "age") == 0) {
                     q.type = QUERY_SELECT_WHERE_AGE;
-                    q.age = atoi(v);
+                    q.age = q.id;
                 } else {
+                    /* Generic column (could be int or varchar) */
                     q.type = QUERY_SELECT_WHERE;
-                    q.id = atoi(v);
                 }
             } else if (strcasecmp(token, "JOIN") == 0) {
                 token = strtok(NULL, DELIMS);
