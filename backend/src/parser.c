@@ -377,12 +377,38 @@ Query parseQuery(const char *sql)
             return q;
         }
 
-        if (strcmp(token, "*") != 0)
-            return make_unknown("expected * or COUNT(*) after SELECT");
+        /* Support for specific columns: SELECT col1, col2 FROM ... */
+        if (strcmp(token, "*") == 0) {
+            q.selectColCount = 0; // Means *
+        } else {
+            /* Parse comma-separated columns */
+            q.selectColCount = 0;
+            char *col_list_ptr = token;
+            while (col_list_ptr && q.selectColCount < MAX_GEN_VALUES) {
+                /* Remove trailing commas if present in the token */
+                size_t len = strlen(col_list_ptr);
+                if (len > 0 && col_list_ptr[len-1] == ',') col_list_ptr[len-1] = '\0';
+                
+                if (strcasecmp(col_list_ptr, "FROM") == 0) break;
+                
+                strncpy(q.selectCols[q.selectColCount++], col_list_ptr, MAX_COL_NAME - 1);
+                
+                /* Peek at next token to see if we reached FROM */
+                char *next = strtok(NULL, DELIMS);
+                if (!next) return make_unknown("missing FROM in SELECT");
+                if (strcasecmp(next, "FROM") == 0) {
+                    token = next; // Set token to FROM for the code below
+                    break;
+                }
+                col_list_ptr = next;
+            }
+        }
 
-        token = strtok(NULL, DELIMS);
-        if (!token || strcasecmp(token, "FROM") != 0)
-            return make_unknown("expected FROM in SELECT");
+        if (strcasecmp(token, "FROM") != 0) {
+            token = strtok(NULL, DELIMS);
+            if (!token || strcasecmp(token, "FROM") != 0)
+                return make_unknown("expected FROM in SELECT");
+        }
 
         token = strtok(NULL, DELIMS);
         if (!token)

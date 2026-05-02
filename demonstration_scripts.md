@@ -104,5 +104,39 @@ SELECT * FROM students;
 
 ---
 
+## 7. Performance & Optimization (Index Verification)
+Use these queries to demonstrate how the **Optimizer** chooses different strategies based on data distribution.
+
+### A. Hash Table Strategy (O(1))
+Triggered by searching for a **unique** primary key.
+```sql
+-- Ensure unique data
+CREATE TABLE perf_test (id int, val varchar);
+INSERT INTO perf_test VALUES (1, 'A');
+INSERT INTO perf_test VALUES (2, 'B');
+
+-- Verify Hash Index use
+EXPLAIN SELECT * FROM perf_test WHERE id = 1;
+```
+
+### B. B+ Tree Strategy (O(log N))
+Triggered by searching for an indexed column with **duplicate** values.
+```sql
+-- Add duplicate IDs
+INSERT INTO perf_test VALUES (1, 'A_Duplicate');
+
+-- Verify B+ Tree use
+EXPLAIN SELECT * FROM perf_test WHERE id = 1;
+```
+
+### C. Full Table Scan (O(N))
+Triggered by searching for a **non-indexed** column.
+```sql
+-- Verify Table Scan
+EXPLAIN SELECT * FROM perf_test WHERE val = 'B';
+```
+
+---
+
 ## 💡 Pro-Tip for Presentation
-When demonstrating the **JOIN** feature, point out how the schema merges dynamically in the results table. When using **EXPLAIN**, look at the "Execution Plan" tab in the UI to show the nested-loop join or sequential scan details.
+When demonstrating the **JOIN** feature, point out how the schema merges dynamically in the results table. When using **EXPLAIN**, look at the "Execution Plan" tab in the UI to show the nested-loop join or sequential scan details. Observe how the **Tree Height** and **Matches** metrics update in real-time.

@@ -186,7 +186,8 @@ void genrec_print(const GenericRecord *r, const Schema *s)
 
 
 void schema_print_all(const char *tableName, const Schema *s,
-                      GenericRecord **records, int count)
+                      GenericRecord **records, int count,
+                      char selectCols[MAX_GEN_VALUES][MAX_COL_NAME], int selectColCount)
 {
     if (!s) return;
 
@@ -194,10 +195,60 @@ void schema_print_all(const char *tableName, const Schema *s,
            tableName ? tableName : "?",
            count, count == 1 ? "" : "s");
 
-    schema_print_header(s);
+    /* Map selectCols to indices */
+    int indices[MAX_GEN_VALUES];
+    int actualCount = 0;
 
-    for (int i = 0; i < count; i++) {
-        genrec_print(records[i], s);
+    if (selectColCount == 0) {
+        /* Print all */
+        actualCount = s->col_count;
+        for (int i = 0; i < s->col_count; i++) indices[i] = i;
+    } else {
+        /* Print only requested */
+        for (int i = 0; i < selectColCount; i++) {
+            int idx = schema_find_column(s, selectCols[i]);
+            if (idx >= 0) indices[actualCount++] = idx;
+        }
+    }
+
+    if (actualCount == 0) {
+        printf("  [No valid columns selected]\n\n");
+        return;
+    }
+
+    /* Print header */
+    printf("  ");
+    for (int i = 0; i < actualCount; i++) {
+        int idx = indices[i];
+        int w = col_width(&s->columns[idx]);
+        if (i > 0) printf("  ");
+        printf("%-*s", w, s->columns[idx].name);
+    }
+    printf("\n  ");
+    for (int i = 0; i < actualCount; i++) {
+        int idx = indices[i];
+        int w = col_width(&s->columns[idx]);
+        if (i > 0) printf("  ");
+        for (int j = 0; j < w; j++) printf("-");
+    }
+    printf("\n");
+
+    /* Print data */
+    for (int r_idx = 0; r_idx < count; r_idx++) {
+        GenericRecord *r = records[r_idx];
+        printf("  ");
+        for (int i = 0; i < actualCount; i++) {
+            int idx = indices[i];
+            int w = col_width(&s->columns[idx]);
+            if (i > 0) printf("  ");
+
+            if (s->columns[idx].type == COL_INT) {
+                printf("%-*d", w, r->values[idx].int_val);
+            } else {
+                printf("%-*s", w, r->values[idx].str_val);
+            }
+        }
+        printf("\n");
     }
     printf("\n");
 }

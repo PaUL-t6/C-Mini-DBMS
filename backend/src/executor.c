@@ -572,7 +572,7 @@ static int exec_select_complex_generic(Table *t, Query q, ExecutionPlan plan)
     }
 
     /* 4. Print final results */
-    schema_print_all(t->name, t->schema, matched, matchedCount);
+    schema_print_all(t->name, t->schema, matched, matchedCount, q.selectCols, q.selectColCount);
     return 0;
 }
 
@@ -906,7 +906,7 @@ static int exec_select_join_generic(Database *db, Query q)
 
     char title[128];
     snprintf(title, 127, "%s JOIN %s", t1->name, t2->name);
-    schema_print_all(title, mSchema, joined, joinedCount);
+    schema_print_all(title, mSchema, joined, joinedCount, q.selectCols, q.selectColCount);
 
     /* Cleanup temporary records and schema */
     for (int i = 0; i < joinedCount; i++) genrec_free(joined[i]);

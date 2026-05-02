@@ -144,6 +144,10 @@ typedef struct Query_s {
     char  joinTable[MAX_TABLE_NAME_LEN];
     char  joinColLeft[MAX_COL_NAME];
     char  joinColRight[MAX_COL_NAME];
+
+    /* Column selection support (new): */
+    char  selectCols[MAX_GEN_VALUES][MAX_COL_NAME];
+    int   selectColCount;
 } Query;
 
 /* Parse a SQL string and return a populated Query struct.
