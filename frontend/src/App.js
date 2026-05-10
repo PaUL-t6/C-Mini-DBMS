@@ -286,14 +286,20 @@ function ExplainPlan({ result }) {
   const plan = parseExplainOutput(result.raw);
   if (!plan) return <EmptyPanel icon="⬡" label="NO EXPLAIN DATA IN THIS RESULT" sub="Run: EXPLAIN SELECT * FROM students WHERE id = 1" />;
 
-  const planColor = { INDEX_HASH:"var(--accent)", INDEX_BPTREE:"var(--amber)", TABLE_SCAN:"var(--blue)" }[plan.planType] ?? "var(--text)";
+  const planColor = { 
+    INDEX_HASH: "var(--accent)", 
+    INDEX_BPTREE: "var(--amber)", 
+    TABLE_SCAN: "var(--blue)",
+    NESTED_LOOP: "var(--purple)" 
+  }[plan.planType] ?? "var(--text)";
 
   const stages = [
     { id:"parser",    label:"PARSER",    icon:"✦", color:"var(--blue)",   desc:"Tokenise & validate SQL" },
     { id:"optimizer", label:"OPTIMIZER", icon:"⬡", color:"var(--purple)", desc:"Choose execution strategy" },
     { id:"strategy",  label:(plan.strategy ?? "EXECUTE").toUpperCase(), icon:"◈", color:planColor, 
       desc: plan.planType === "INDEX_BPTREE" ? "Leaf chain traversal" : 
-            plan.planType === "INDEX_HASH" ? "Direct bucket lookup" : "Linear array scan" },
+            plan.planType === "INDEX_HASH"   ? "Direct bucket lookup" : 
+            plan.planType === "NESTED_LOOP"  ? "Join cross-product"    : "Linear array scan" },
   ];
 
   return (

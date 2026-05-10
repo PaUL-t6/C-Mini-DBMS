@@ -34,7 +34,7 @@ int hashFunction(int key)
 
 
 
-int insertHash(HashTable *ht, int key, Record *value)
+int insertHash(HashTable *ht, int key, void *value)
 {
     if (!ht) return -1;
 
@@ -71,7 +71,7 @@ int insertHash(HashTable *ht, int key, Record *value)
 
 
 
-Record *searchHash(const HashTable *ht, int key)
+void *searchHash(const HashTable *ht, int key)
 {
     if (!ht) return NULL;
 

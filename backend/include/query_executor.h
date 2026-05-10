@@ -48,14 +48,7 @@
  *                  These are independent of the legacy table.
  * ---------------------------------------------------------------- */
 typedef struct {
-    /* Legacy single-table support (unchanged) */
-    Table     *table;          /* row storage (dynamic array)              */
-    HashTable *hashIndex;      /* hash index    id  -> Record*   O(1)      */
-    BPTree    *bpIndex;        /* B+ tree       id  -> Record*   O(log n)  */
-    BPTree    *ageIndex;       /* B+ tree (2nd) age -> Record*   O(log n)  */
-    int        isInitialised;  /* 1 = CREATE TABLE has been run            */
-
-    /* Generic table catalog (new) */
+    /* Generic table catalog */
     Table     *tables[MAX_TABLES];  /* schema-defined tables              */
     int        tableCount;          /* number of generic tables           */
 } Database;
@@ -97,5 +90,8 @@ void freeDatabase(Database *db);
  *
  * Returns 0 on success, -1 on error. */
 int executeQuery(Database *db, Query q);
+
+/* Helper to find a table by name in the database catalog. */
+Table *db_find_table(Database *db, const char *name);
 
 #endif /* QUERY_EXECUTOR_H */

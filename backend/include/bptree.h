@@ -49,7 +49,7 @@
  *
  *  isLeaf == 1  →  leaf node
  *    keys[i]       : stored record ids
- *    records[i]    : pointer to the matching Record (NOT owned here)
+ *    records[i]    : pointer to the matching data (NOT owned here)
  *    children[i]   : unused (NULL)
  *    nextLeaf      : pointer to the next leaf (linked list)
  * ---------------------------------------------------------------- */
@@ -61,7 +61,7 @@ typedef struct BPTreeNode {
     /* Internal nodes use children[]; leaf nodes use records[].
      * They share the same index positions (children[i] ↔ records[i]). */
     struct BPTreeNode *children[BP_MAX_CHILD]; /* internal: child pointers */
-    Record            *records[BP_MAX_KEYS];   /* leaf: Record pointers    */
+    void              *records[BP_MAX_KEYS];   /* leaf: Data pointers      */
 
     struct BPTreeNode *nextLeaf;         /* leaf linked-list pointer       */
 } BPTreeNode;
@@ -69,61 +69,31 @@ typedef struct BPTreeNode {
 /* ----------------------------------------------------------------
  * BPTree  –  the tree handle (just wraps the root pointer)
  * ---------------------------------------------------------------- */
+/* ============================================================
+ *  bptree.h  –  B+ Tree index mapping  key -> void*
+ * ============================================================ */
+
+#define BP_ORDER 4
+
+typedef struct BPNode {
+    int     isLeaf;
+    int     numKeys;
+    int     keys[2 * BP_ORDER - 1];
+    void   *values[2 * BP_ORDER - 1];
+    struct BPNode *children[2 * BP_ORDER];
+    struct BPNode *nextLeaf;
+} BPNode;
+
 typedef struct {
-    BPTreeNode *root;
+    BPNode *root;
 } BPTree;
 
-/* Allocate a new node.  isLeaf controls which fields are active.
- * All pointers are zeroed; numKeys starts at 0. */
-BPTreeNode *createNode(int isLeaf);
-
-/* Allocate and return an empty B+ Tree with a single empty leaf root. */
 BPTree *createTree(void);
-
-/* Insert key + Record pointer into the tree.
- * Handles root-split when the root is full.
- * Does nothing (prints a warning) on duplicate keys. */
-void insertBPTree(BPTree *tree, int key, Record *record);
-
-/* When a child node is full before insertion, split it in two.
- * parent  : the internal node that owns the full child
- * i       : index in parent->children[] of the full child
- * The median key is pushed up into parent, and a new sibling
- * node is created to hold the upper half of the old child's keys. */
-void splitChild(BPTreeNode *parent, int i, BPTreeNode *fullChild);
-
-/* Insert key into the subtree rooted at `node`, which is guaranteed
- * to be non-full at the time of the call (pre-split on the way down).*/
-void insertNonFull(BPTreeNode *node, int key, Record *record);
-
-/* Search for a key in the tree.
- * Returns the Record* if found, NULL otherwise.
- * Time complexity: O(log n) */
-Record *searchBPTree(const BPTree *tree, int key);
-
-/* Search for ALL records whose key equals `key`.
- * Used by the age secondary index where multiple records can share
- * the same age value (non-unique key).
- *
- * Results are written into caller-supplied `results[]` array.
- * `max_results` is the capacity of that array.
- * Returns the number of matches found (0 if none).
- *
- * Strategy: descend to the first matching leaf via normal tree
- * walk, then follow the nextLeaf linked-list to collect all
- * duplicates that span across leaf boundaries.
- * Time complexity: O(log n + k) where k = number of matches. */
-int searchAllBPTree(const BPTree *tree, int key,
-                    Record **results, int max_results);
-
-/* Return the number of records with the given key (O(log n + k)). */
+int insertBPTree(BPTree *tree, int key, void *value);
+void *searchBPTree(const BPTree *tree, int key);
+int searchAllBPTree(const BPTree *tree, int key, void **results, int max_results);
 int countBPTreeMatches(const BPTree *tree, int key);
-
-/* Return the depth of the tree (root to leaf). O(height). */
 int getBPTreeHeight(const BPTree *tree);
-
-/* Free every node in the tree.
- * Records pointed to by leaves are NOT freed (owned by Table). */
 void freeBPTree(BPTree *tree);
 
 #endif /* BPTREE_H */

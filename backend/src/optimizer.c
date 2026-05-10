@@ -13,7 +13,6 @@
 static Table *opt_find_table(Database *db, const char *name)
 {
     if (!db || !name) return NULL;
-    if (db->table && strcasecmp(db->table->name, name) == 0) return db->table;
     for (int i = 0; i < db->tableCount; i++) {
         if (db->tables[i] && strcasecmp(db->tables[i]->name, name) == 0)
             return db->tables[i];
@@ -31,6 +30,7 @@ const char *planTypeName(PlanType pt)
         case INDEX_HASH:   return "INDEX_HASH  ";
         case INDEX_BPTREE: return "INDEX_BPTREE";
         case TABLE_SCAN:   return "TABLE_SCAN  ";
+        case NESTED_LOOP:  return "NESTED_LOOP ";
         default:           return "UNKNOWN     ";
     }
 }
@@ -50,7 +50,7 @@ ExecutionPlan chooseExecutionPlan(Query q, const void *dbPtr)
     snprintf(plan.reason, sizeof(plan.reason), "Default strategy for %s", q.tableName);
     snprintf(plan.estimatedCost, sizeof(plan.estimatedCost), "O(N)");
 
-    if (!t) return plan;
+    if (!t && q.type != QUERY_SELECT_JOIN) return plan;
 
     /* ---- Rule 1: CREATE/INSERT/SELECT ALL/COUNT ---- */
     if (q.type == QUERY_CREATE) {
@@ -59,11 +59,11 @@ ExecutionPlan chooseExecutionPlan(Query q, const void *dbPtr)
         return plan;
     }
     if (q.type == QUERY_INSERT) {
-        snprintf(plan.reason, sizeof(plan.reason), "INSERT appends to array and updates indexes");
-        snprintf(plan.estimatedCost, sizeof(plan.estimatedCost), "O(1) amortised");
+        snprintf(plan.reason, sizeof(plan.reason), "INSERT appends to array and updates indexes (Hash & B+ Tree)");
+        snprintf(plan.estimatedCost, sizeof(plan.estimatedCost), "O(log N)");
         return plan;
     }
-    if (q.type == QUERY_SELECT) {
+    if (q.type == QUERY_SELECT && !q.column[0] && !q.hasGroupBy) {
         snprintf(plan.reason, sizeof(plan.reason), "Full result set requested — linear scan of %d records", N);
         snprintf(plan.estimatedCost, sizeof(plan.estimatedCost), "O(N)");
         return plan;
@@ -74,33 +74,26 @@ ExecutionPlan chooseExecutionPlan(Query q, const void *dbPtr)
         return plan;
     }
 
-    /* ---- Rule 2: Filter Queries (WHERE) ---- */
-    const char *col = q.column;
-    if (col[0] == '\0') {
-        /* Legacy fallback for missing column name in Query struct */
-        if (q.type == QUERY_SELECT_WHERE || q.type == QUERY_DELETE_WHERE || q.type == QUERY_UPDATE)
-            col = "id";
-        else if (q.type == QUERY_SELECT_WHERE_AGE)
-            col = "age";
+    /* ---- Rule 2: JOIN queries ---- */
+    if (q.type == QUERY_SELECT_JOIN) {
+        Table *t2 = opt_find_table(db, q.joinTable);
+        int M = t2 ? (t2->is_generic ? t2->gen_count : t2->record_count) : 0;
+        plan.planType = NESTED_LOOP;
+        snprintf(plan.reason, sizeof(plan.reason), "Joining '%s' (%d rows) and '%s' (%d rows) via Nested Loop", 
+                 q.tableName, N, q.joinTable, M);
+        snprintf(plan.estimatedCost, sizeof(plan.estimatedCost), "O(N * M)");
+        return plan;
     }
 
+    /* ---- Rule 3: Filter Queries (WHERE) ---- */
+    const char *col = q.column;
     HashTable *ht = NULL;
     BPTree    *bp = NULL;
 
-    if (t->is_generic) {
-        /* Check if column is the primary key */
-        if (t->schema && strcasecmp(t->schema->columns[t->primary_col_idx].name, col) == 0) {
-            ht = (HashTable *)t->primary_hash;
-            bp = (BPTree *)t->primary_bp;
-        }
-    } else {
-        /* Legacy hardcoded indexes */
-        if (strcasecmp(col, "id") == 0) {
-            ht = db->hashIndex;
-            bp = db->bpIndex;
-        } else if (strcasecmp(col, "age") == 0) {
-            bp = db->ageIndex;
-        }
+    /* Check if column is the primary key of the generic table */
+    if (t->schema && strcasecmp(t->schema->columns[t->primary_col_idx].name, col) == 0) {
+        ht = (HashTable *)t->primary_hash;
+        bp = (BPTree *)t->primary_bp;
     }
 
     /* Decision logic */
@@ -115,9 +108,9 @@ ExecutionPlan chooseExecutionPlan(Query q, const void *dbPtr)
             matches = searchHash(ht, val) ? 1 : 0;
         }
 
-        if (ht && matches <= 1) {
+        if (ht && (matches <= 1 || q.type == QUERY_UPDATE || q.type == QUERY_DELETE_WHERE)) {
             plan.planType = INDEX_HASH;
-            snprintf(plan.reason, sizeof(plan.reason), "Unique %s — hash index gives O(1) direct lookup", col);
+            snprintf(plan.reason, sizeof(plan.reason), "Targeting %s=%d — hash index gives O(1) direct lookup", col, val);
             snprintf(plan.estimatedCost, sizeof(plan.estimatedCost), "O(1)");
         } else if (bp) {
             plan.planType = INDEX_BPTREE;
@@ -127,7 +120,7 @@ ExecutionPlan chooseExecutionPlan(Query q, const void *dbPtr)
         }
     } else {
         plan.planType = TABLE_SCAN;
-        snprintf(plan.reason, sizeof(plan.reason), "No index on %s — performing linear scan of %d records", col, N);
+        snprintf(plan.reason, sizeof(plan.reason), "No index on '%s' — performing linear scan of %d records", col, N);
         snprintf(plan.estimatedCost, sizeof(plan.estimatedCost), "O(N)");
     }
 
@@ -151,8 +144,7 @@ void printExecutionPlan(ExecutionPlan plan, Query q)
             snprintf(clause, sizeof(clause), "DELETE WHERE id = %d", q.id);
             break;
         case QUERY_UPDATE:
-            snprintf(clause, sizeof(clause), "UPDATE SET age=%d WHERE id=%d",
-                     q.newAge, q.id);
+            snprintf(clause, sizeof(clause), "UPDATE %s", q.tableName);
             break;
         case QUERY_COUNT:
             snprintf(clause, sizeof(clause), "COUNT(*)");

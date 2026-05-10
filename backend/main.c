@@ -46,14 +46,13 @@ static void print_help(void)
 {
     printf("\n  Supported commands\n");
     printf("  ------------------\n");
-    printf("  CREATE TABLE students\n");
-    printf("  INSERT INTO students VALUES (id, name, age)\n");
+    printf("  CREATE TABLE students (id int, name varchar, age int)\n");
+    printf("  INSERT INTO students VALUES (1, 'Alice', 20)\n");
     printf("  SELECT * FROM students\n");
-    printf("  SELECT * FROM students WHERE id   = X\n");
-    printf("  SELECT * FROM students WHERE age  = X\n");
-    printf("  SELECT COUNT(*) FROM students\n");
+    printf("  SELECT * FROM students WHERE id = 1\n");
+    printf("  SELECT * FROM students ORDER BY age\n");
+    printf("  SELECT age FROM students GROUP BY age\n");
     printf("  EXPLAIN <sql>            — show execution plan\n");
-    
     printf("  HELP                     — show this message\n");
     printf("  EXIT / QUIT              — quit\n\n");
 }

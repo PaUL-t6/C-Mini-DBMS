@@ -65,7 +65,8 @@
 typedef enum {
     INDEX_HASH,    /* O(1)     - hash index on primary key (id)    */
     INDEX_BPTREE,  /* O(log n) - B+ tree index on primary key (id) */
-    TABLE_SCAN     /* O(n)     - linear scan of the records array   */
+    TABLE_SCAN,    /* O(n)     - linear scan of the records array   */
+    NESTED_LOOP    /* O(N*M)   - join of two tables via nested loops */
 } PlanType;
 
 /* ----------------------------------------------------------------
