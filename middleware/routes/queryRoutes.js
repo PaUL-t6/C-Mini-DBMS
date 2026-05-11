@@ -1,16 +1,8 @@
-/**
- * 
- *
- * Routes
- * ------
- *   POST /query      Send a SQL string to the DBMS, get output back.
- *   GET  /health     Quick liveness check (no DB interaction needed).
- */
 
 "use strict";
 
-const express   = require("express");
-const router    = express.Router();
+const express = require("express");
+const router = express.Router();
 const { runQuery } = require("../dbProcess");
 
 
@@ -34,14 +26,14 @@ router.post("/query", async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      query:   sql,
-      result:  result,
+      query: sql,
+      result: result,
     });
   } catch (err) {
     console.error(`[route] Query failed: ${err.message}`);
     return res.status(500).json({
       success: false,
-      error:   err.message,
+      error: err.message,
     });
   }
 });

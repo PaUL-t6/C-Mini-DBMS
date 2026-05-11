@@ -175,12 +175,12 @@ Query parseQuery(const char *sql)
         if (!token || strcasecmp(token, "TABLE") != 0)
             return make_unknown("expected TABLE after CREATE");
 
-        /* Table name — may have '(' attached: "foo(id" */
+        
         token = strtok(NULL, DELIMS);
         if (!token)
             return make_unknown("missing table name in CREATE");
 
-        /* Split table name from '(' if glued together: "foo(id..." */
+        
         char raw_name[MAX_TABLE_NAME_LEN] = {0};
         strncpy(raw_name, token, MAX_TABLE_NAME_LEN - 1);
 
@@ -192,11 +192,7 @@ Query parseQuery(const char *sql)
         q.type = QUERY_CREATE;
         strncpy(q.tableName, raw_name, MAX_TABLE_NAME_LEN - 1);
 
-        /* --- Check for column definitions: CREATE TABLE name (...) --- */
-
-        /* Rebuild the remainder of the SQL after the table name.
-         * We need the raw text because strtok has already fragmented buf.
-         * Re-scan the original SQL to find everything after the table name. */
+        
         const char *colStart = NULL;
         {
             /* Find '(' in the original sql string */
@@ -509,11 +505,7 @@ Query parseQuery(const char *sql)
                     } else if (strcasecmp(next, "ASC") == 0) {
                         q.isOrderDesc = 0;
                     } else {
-                        /* Not ASC/DESC, might be another clause, but for now we consume it if it was ASC/DESC */
-                        /* Actually, strtok is stateful, so we need to be careful. */
-                        /* If it's not ASC/DESC, it might be the start of another clause. */
-                        /* But our simple parser assumes it's the end or followed by another clause keyword. */
-                        /* Let's re-handle the 'next' token in the next iteration. */
+                        
                         token = next;
                         continue;
                     }

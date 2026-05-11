@@ -43,7 +43,7 @@ ExecutionPlan chooseExecutionPlan(Query q, const void *dbPtr)
     memset(&plan, 0, sizeof(plan));
 
     Table *t = opt_find_table(db, q.tableName);
-    int N = t ? (t->is_generic ? t->gen_count : t->record_count) : 0;
+    int N = t ? t->gen_count : 0;
 
     /* Default: scan */
     plan.planType = TABLE_SCAN;
@@ -77,7 +77,7 @@ ExecutionPlan chooseExecutionPlan(Query q, const void *dbPtr)
     /* ---- Rule 2: JOIN queries ---- */
     if (q.type == QUERY_SELECT_JOIN) {
         Table *t2 = opt_find_table(db, q.joinTable);
-        int M = t2 ? (t2->is_generic ? t2->gen_count : t2->record_count) : 0;
+        int M = t2 ? t2->gen_count : 0;
         plan.planType = NESTED_LOOP;
         snprintf(plan.reason, sizeof(plan.reason), "Joining '%s' (%d rows) and '%s' (%d rows) via Nested Loop", 
                  q.tableName, N, q.joinTable, M);

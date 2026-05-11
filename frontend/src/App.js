@@ -102,28 +102,24 @@ function parseExplainOutput(raw) {
 
 function parseIndexStats(rawList) {
   const combined = rawList.join("\n");
-  const rowsMatch = combined.match(/\((\d+)\s+rows?\)/i);
-  const n = rowsMatch ? parseInt(rowsMatch[1]) : 0;
+  const rowsMatch = combined.match(/Records:\s*(\d+)/i) || combined.match(/\((\d+)\s+rows?\)/i);
+  const heightMatch = combined.match(/Tree Height:\s*(\d+)/i) || combined.match(/Height:\s*(\d+)/i);
+  const hashMatch = combined.match(/Hash Load:\s*(\d+)%/i);
+  const memMatch = combined.match(/Memory:\s*([\d\.]+) KB/i);
+  
   return {
-    rowCount:  n,
-    bpHeight:  n > 0 ? Math.max(1, Math.ceil(Math.log(n + 1) / Math.log(4))) : 0,
-    hashLoad:  n > 0 ? Math.min(100, Math.round((n / 101) * 100)) : 0,
+    rowCount: rowsMatch ? parseInt(rowsMatch[1], 10) : 0,
+    bpHeight: heightMatch ? parseInt(heightMatch[1], 10) : 1,
+    hashLoad: hashMatch ? parseInt(hashMatch[1], 10) : 0,
+    memory: memMatch ? memMatch[1] : "0.0",
+    strategy: combined.match(/Plan Type:\s*([^\s]+)/i)?.[1] || "—"
   };
 }
 
 /* ─────────────────────────────────────────────────────────────────
    Presets
 ───────────────────────────────────────────────────────────────── */
-const PRESETS = [
-  { label:"CREATE",      sql:"CREATE TABLE students" },
-  { label:"INSERT · 1", sql:"INSERT INTO students VALUES (1, Alice, 20)" },
-  { label:"INSERT · 2", sql:"INSERT INTO students VALUES (2, Bob, 22)" },
-  { label:"INSERT · 3", sql:"INSERT INTO students VALUES (3, Charlie, 19)" },
-  { label:"SELECT ALL", sql:"SELECT * FROM students" },
-  { label:"WHERE id=1", sql:"SELECT * FROM students WHERE id = 1" },
-  { label:"EXPLAIN",    sql:"EXPLAIN SELECT * FROM students WHERE id = 1" },
-  { label:"COUNT",      sql:"SELECT COUNT(*) FROM students" },
-];
+
 
 /* ─────────────────────────────────────────────────────────────────
    QueryEditor  — unchanged from original
@@ -163,13 +159,7 @@ function QueryEditor({ sql, setSql, onRun, loading }) {
       </div>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderTop:"1px solid var(--border)", background:"#0f1218" }}>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-          {PRESETS.map(p => (
-            <button key={p.label} onClick={() => setSql(p.sql)} style={{ padding:"3px 9px", background:"transparent", border:"1px solid var(--border2)", borderRadius:4, color:"var(--muted)", fontFamily:"'JetBrains Mono',monospace", fontSize:10, letterSpacing:".04em", cursor:"pointer", transition:"all .15s" }}
-              onMouseEnter={e => { e.target.style.borderColor="var(--accent)"; e.target.style.color="var(--accent)"; }}
-              onMouseLeave={e => { e.target.style.borderColor="var(--border2)"; e.target.style.color="var(--muted)"; }}>
-              {p.label}
-            </button>
-          ))}
+          {/* Presets removed — use generic SQL syntax */}
         </div>
         <button onClick={onRun} disabled={loading || !sql.trim()} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 22px", background:loading?"var(--border)":"var(--accent)", color:loading?"var(--muted)":"#0c0e11", border:"none", borderRadius:6, fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700, letterSpacing:".08em", cursor:loading?"not-allowed":"pointer", transition:"all .15s", animation:!loading&&sql.trim()?"glow 2s ease infinite":"none" }}
           onMouseEnter={e => { if (!loading) e.currentTarget.style.background="var(--accent2)"; }}
@@ -282,9 +272,9 @@ function EmptyPanel({ icon, label, sub }) {
    NEW ── ExplainPlan
 ───────────────────────────────────────────────────────────────── */
 function ExplainPlan({ result }) {
-  if (!result) return <EmptyPanel icon="⬡" label="RUN AN EXPLAIN QUERY" sub="e.g. EXPLAIN SELECT * FROM students WHERE id = 1" />;
+  if (!result) return <EmptyPanel icon="⬡" label="RUN AN EXPLAIN QUERY" sub="e.g. EXPLAIN SELECT * FROM table_name WHERE id = 1" />;
   const plan = parseExplainOutput(result.raw);
-  if (!plan) return <EmptyPanel icon="⬡" label="NO EXPLAIN DATA IN THIS RESULT" sub="Run: EXPLAIN SELECT * FROM students WHERE id = 1" />;
+  if (!plan) return <EmptyPanel icon="⬡" label="NO EXPLAIN DATA IN THIS RESULT" sub="Run: EXPLAIN SELECT * FROM table_name WHERE id = 1" />;
 
   const planColor = { 
     INDEX_HASH: "var(--accent)", 
@@ -373,9 +363,10 @@ function IndexStats({ allResults }) {
   const hashUsed = Math.min(rowCount, 101);
 
   const tiles = [
-    { label:"RECORDS",        value:rowCount,    unit:"rows",       icon:"▦", color:"var(--accent)", desc:"Total rows in table",                 bar:null },
-    { label:"B+ TREE HEIGHT", value:bpHeight,    unit:bpHeight===1?"level":"levels", icon:"⬡", color:"var(--amber)", desc:`Order-4 · ~${rowCount} node${rowCount!==1?"s":""}`, bar:{ v:bpHeight, max:6, color:"var(--amber)" } },
-    { label:"HASH TABLE",     value:`${hashLoad}%`, unit:`${hashUsed}/101 slots`, icon:"#", color:"var(--blue)", desc:"Separate chaining · 101 buckets", bar:{ v:hashLoad, max:100, color:hashLoad>70?"var(--red)":"var(--blue)" } },
+    { label:"TOTAL RECORDS",  value:rowCount,    unit:"rows",       icon:"▦", color:"var(--accent)", desc:"Total row count in generic storage",                 bar:null },
+    { label:"B+ TREE LEVEL", value:bpHeight,    unit:bpHeight===1?"level":"levels", icon:"⬡", color:"var(--amber)", desc:`Order-4 tree · Balanced access`, bar:{ v:bpHeight, max:6, color:"var(--amber)" } },
+    { label:"HASH EFFICIENCY", value:`${hashLoad}%`, unit:"load", icon:"#", color:"var(--blue)", desc:"Separate chaining buckets", bar:{ v:hashLoad, max:100, color:hashLoad>70?"var(--red)":"var(--blue)" } },
+    { label:"HEAP MEMORY",     value:`${stats.memory} KB`, unit:"RAM", icon:"◈", color:"var(--purple)", desc:"Estimated internal allocation", bar:null },
   ];
 
   return (
@@ -599,7 +590,7 @@ function TabBar({ active, onSelect, result }) {
    ROOT APP
 ───────────────────────────────────────────────────────────────── */
 export default function App() {
-  const [sql,        setSql]        = useState("SELECT * FROM students");
+  const [sql,        setSql]        = useState("-- SELECT * FROM your_table\n");
   const [loading,    setLoading]    = useState(false);
   const [result,     setResult]     = useState(null);
   const [elapsed,    setElapsed]    = useState(null);

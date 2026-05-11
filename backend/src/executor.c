@@ -72,6 +72,7 @@ static int exec_create(Database *db, Query q)
     }
     db->tables[db->tableCount++] = t;
     printf("[executor] Table '%s' created.\n", q.tableName);
+    saveSchemaToDisk(q.tableName, t->schema);
     loadGenericTableFromDisk(q.tableName, t);
     return 0;
 }
@@ -276,6 +277,55 @@ static int exec_select_complex_generic(Table *t, Query q, ExecutionPlan plan)
         for (int i = 0; i < matchedCount; i++) matched[i] = t->gen_records[i];
     }
 
+    if (q.hasGroupBy) {
+        int gIdx = schema_find_column(t->schema, q.groupByCol);
+        if (gIdx >= 0) {
+            /* 1. Sort by the group column first to group adjacent records */
+            SortBPTree gtree;
+            gtree.root = create_sort_node(1);
+            gtree.colIdx = gIdx;
+            gtree.colType = t->schema->columns[gIdx].type;
+            for (int i = 0; i < matchedCount; i++) insert_sort_tree(&gtree, matched[i]);
+            
+            int sortedCount = 0;
+            GenericRecord *sorted[1024];
+            collect_sort_records(gtree.root, sorted, &sortedCount, 0);
+            free_sort_node(gtree.root);
+
+            /* 2. Iterate through sorted records to identify groups and apply HAVING */
+            GenericRecord *grouped[1024];
+            int groupedCount = 0;
+            int i = 0;
+            while (i < sortedCount && groupedCount < 1024) {
+                int groupStart = i;
+                int groupSize = 0;
+                /* Count how many records are in this group */
+                while (i < sortedCount && compare_vals(sorted[i]->values[gIdx], sorted[groupStart]->values[gIdx], t->schema->columns[gIdx].type) == 0) {
+                    groupSize++;
+                    i++;
+                }
+
+                /* 3. Apply HAVING filter (currently supports COUNT(*) operations) */
+                int pass = 1;
+                if (q.hasHaving) {
+                    if (strcmp(q.havingOp, "=") == 0) pass = (groupSize == q.havingValue);
+                    else if (strcmp(q.havingOp, ">") == 0) pass = (groupSize > q.havingValue);
+                    else if (strcmp(q.havingOp, "<") == 0) pass = (groupSize < q.havingValue);
+                    else if (strcmp(q.havingOp, ">=") == 0) pass = (groupSize >= q.havingValue);
+                    else if (strcmp(q.havingOp, "<=") == 0) pass = (groupSize <= q.havingValue);
+                }
+
+                if (pass) {
+                    /* Take the first record of the group as the representative */
+                    grouped[groupedCount++] = sorted[groupStart];
+                }
+            }
+            /* Update matched array with grouped results */
+            matchedCount = groupedCount;
+            for (int k = 0; k < matchedCount; k++) matched[k] = grouped[k];
+        }
+    }
+
     if (q.hasOrderBy) {
         int oIdx = schema_find_column(t->schema, q.orderByCol);
         if (oIdx >= 0) {
@@ -378,12 +428,26 @@ static int exec_explain(Database *db, Query q)
         if (plan.planType == INDEX_BPTREE) {
             matches = countBPTreeMatches((BPTree *)t->primary_bp, val);
             height = getBPTreeHeight((BPTree *)t->primary_bp);
-        } else if (plan.planType == INDEX_HASH) matches = 1;
-        else matches = rowCount;
+        } else if (plan.planType == INDEX_HASH) {
+            matches = 1;
+        } else {
+            matches = rowCount;
+        }
     }
+    int hashLoad = (rowCount > 0) ? (rowCount * 100 / 101) : 0;
+    float memoryKB = (rowCount * (sizeof(GenericRecord) + (t->schema->col_count * sizeof(ColumnValue)))) / 1024.0;
+
+    printf("Parser -> Optimizer -> %s\n", planTypeName(plan.planType));
     printf("\nQuery Plan: %s\n", planTypeName(plan.planType));
-    printf("  Strategy: %s\n", plan.reason);
-    printf("  Records: %d, Matches: %d, Height: %d\n\n", rowCount, matches, height);
+    printf("  Plan Type: %s\n", planTypeName(plan.planType));
+    printf("  Est. Cost: %s\n", plan.estimatedCost);
+    printf("  Reason: %s\n", plan.reason);
+    printf("  Records: %d\n", rowCount);
+    printf("  Matches: %d\n", matches);
+    printf("  Tree Height: %d\n", height);
+    printf("  Hash Load: %d%%\n", hashLoad);
+    printf("  Memory: %.2f KB\n", memoryKB);
+    printf("  Inner Query: %s\n\n", inner->tableName);
     return 0;
 }
 

@@ -15,6 +15,12 @@ int loadGenericTableFromDisk(const char *tableName, Table *t);
 /* Overwrite data/<tableName>.tbl with all generic records currently in the Table */
 int rewriteGenericTableToDisk(const char *tableName, const Table *t);
 
+/* Persist schema to data/<tableName>.schema */
+int saveSchemaToDisk(const char *tableName, const Schema *s);
+
+/* Load schema from data/<tableName>.schema */
+Schema *loadSchemaFromDisk(const char *tableName);
+
 /* Scan data directory and load all tables into the database */
 void storage_bootstrap(void *db);
 

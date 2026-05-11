@@ -109,21 +109,70 @@ int rewriteGenericTableToDisk(const char *tableName, const Table *t)
     return 0;
 }
 
+int saveSchemaToDisk(const char *tableName, const Schema *s)
+{
+    if (!tableName || !s) return -1;
+    ensure_data_dir();
+    char path[STORAGE_PATH_LEN];
+    snprintf(path, STORAGE_PATH_LEN, "%s/%s.schema", DATA_DIR, tableName);
+    FILE *f = fopen(path, "w");
+    if (!f) return -1;
+    fprintf(f, "%d\n", s->col_count);
+    for (int i = 0; i < s->col_count; i++) {
+        fprintf(f, "%s %s\n", s->columns[i].name, col_type_name(s->columns[i].type));
+    }
+    fclose(f);
+    return 0;
+}
+
+Schema *loadSchemaFromDisk(const char *tableName)
+{
+    if (!tableName) return NULL;
+    char path[STORAGE_PATH_LEN];
+    snprintf(path, STORAGE_PATH_LEN, "%s/%s.schema", DATA_DIR, tableName);
+    FILE *f = fopen(path, "r");
+    if (!f) return NULL;
+    Schema *s = schema_create();
+    int count;
+    if (fscanf(f, "%d", &count) != 1) { schema_free(s); fclose(f); return NULL; }
+    for (int i = 0; i < count; i++) {
+        char name[MAX_COL_NAME];
+        char typeStr[32];
+        if (fscanf(f, "%31s %31s", name, typeStr) == 2) {
+            ColumnType ct;
+            if (col_type_parse(typeStr, &ct) == 0) schema_add_column(s, name, ct);
+        }
+    }
+    fclose(f);
+    return s;
+}
+
 void storage_bootstrap(void *dbPtr)
 {
     Database *db = (Database *)dbPtr;
     DIR *d = opendir(DATA_DIR);
     if (!d) return;
     struct dirent *dir;
+    printf("[storage] Bootstrapping database from '%s'...\n", DATA_DIR);
     while ((dir = readdir(d)) != NULL) {
-        if (strstr(dir->d_name, ".tbl")) {
+        if (strstr(dir->d_name, ".schema")) {
             char tableName[64];
             size_t len = strlen(dir->d_name);
-            if (len < 5) continue;
-            strncpy(tableName, dir->d_name, len - 4);
-            tableName[len - 4] = '\0';
+            if (len < 8) continue;
+            strncpy(tableName, dir->d_name, len - 7);
+            tableName[len - 7] = '\0';
+            
             if (db_find_table(db, tableName)) continue;
-            /* Skipping auto-load without schema as per design */
+
+            Schema *s = loadSchemaFromDisk(tableName);
+            if (s) {
+                Table *t = table_create_generic(tableName, s);
+                if (t) {
+                    db->tables[db->tableCount++] = t;
+                    loadGenericTableFromDisk(tableName, t);
+                    printf("[storage] Auto-restored table '%s'\n", tableName);
+                } else schema_free(s);
+            }
         }
     }
     closedir(d);

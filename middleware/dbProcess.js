@@ -2,44 +2,35 @@
 
 "use strict";
 
-const { spawn }  = require("child_process");
-const path       = require("path");
+const { spawn } = require("child_process");
+const path = require("path");
 
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
 
-// Path to the compiled C binary (relative to this file's location)
 const DBMS_BINARY = path.resolve(__dirname, "../backend/dbms" + (process.platform === "win32" ? ".exe" : ""));
 
-// How long (ms) to wait for the C process to respond before timing out
 const QUERY_TIMEOUT_MS = 5000;
 
-// ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
 
-let dbProcess   = null;   // the ChildProcess object
-let outputBuf   = "";     // accumulates stdout chunks between queries
-let pending     = null;   // { resolve, reject, timer } for the in-flight query
-const queue     = [];     // waiting queries: [{ query, resolve, reject }]
 
-// ---------------------------------------------------------------------------
-// spawnDBMS  –  start the C process
-// ---------------------------------------------------------------------------
+let dbProcess = null;   // the ChildProcess object
+let outputBuf = "";     // accumulates stdout chunks between queries
+let pending = null;   // { resolve, reject, timer } for the in-flight query
+const queue = [];     // waiting queries: [{ query, resolve, reject }]
+
+//  start the C process
 
 function spawnDBMS() {
   console.log(`[dbProcess] Spawning DBMS: ${DBMS_BINARY}`);
 
   dbProcess = spawn(DBMS_BINARY, [], {
-    stdio: ["pipe", "pipe", "pipe"],  // stdin / stdout / stderr all piped
+    stdio: ["pipe", "pipe", "pipe"],
   });
 
-  
+
   dbProcess.stdout.on("data", (chunk) => {
     outputBuf += chunk.toString();
 
-    
+
     if (pending && outputBuf.includes("> ")) {
       const result = extractResult(outputBuf);
       outputBuf = "";                        // clear buffer for next query
@@ -78,13 +69,11 @@ function spawnDBMS() {
   outputBuf = "";
 }
 
-// ---------------------------------------------------------------------------
-// extractResult  –  strip prompts and banner from raw stdout
-// ---------------------------------------------------------------------------
+
 
 
 function extractResult(raw) {
-  
+
   const normalised = "\n" + raw;
   const segments = normalised.split(/\n> /);
 
@@ -98,9 +87,9 @@ function extractResult(raw) {
   return results.join("\n").trim();
 }
 
-// ---------------------------------------------------------------------------
+
 // processQueue  –  send the next waiting query if the process is free
-// ---------------------------------------------------------------------------
+
 
 function processQueue() {
   if (pending || queue.length === 0) return;
@@ -109,9 +98,9 @@ function processQueue() {
   sendToProcess(query, resolve, reject);
 }
 
-// ---------------------------------------------------------------------------
+
 // sendToProcess  –  write one SQL line and set up the pending promise
-// ---------------------------------------------------------------------------
+
 
 function sendToProcess(query, resolve, reject) {
   if (!dbProcess) {
@@ -132,9 +121,9 @@ function sendToProcess(query, resolve, reject) {
   dbProcess.stdin.write(query + "\n");
 }
 
-// ---------------------------------------------------------------------------
+
 // runQuery  –  public API used by the route handler
-// ---------------------------------------------------------------------------
+
 
 /**
  * Send a SQL string to the DBMS and return a Promise that resolves
@@ -158,9 +147,9 @@ function runQuery(query) {
   });
 }
 
-// ---------------------------------------------------------------------------
+
 // shutdown  –  gracefully close the child process
-// ---------------------------------------------------------------------------
+
 
 function shutdown() {
   if (dbProcess) {
@@ -170,15 +159,14 @@ function shutdown() {
   }
 }
 
-// ---------------------------------------------------------------------------
+
 // Initialise on module load
-// ---------------------------------------------------------------------------
 
 spawnDBMS();
 
 // Ensure the child is killed if the Node process exits
-process.on("exit",    shutdown);
-process.on("SIGINT",  () => { shutdown(); process.exit(0); });
+process.on("exit", shutdown);
+process.on("SIGINT", () => { shutdown(); process.exit(0); });
 process.on("SIGTERM", () => { shutdown(); process.exit(0); });
 
 
